@@ -1,26 +1,46 @@
-# Use PHP + Nginx image
-FROM webdevops/php-nginx:8.2
+# =========================
+# Stage 1: Frontend build
+# =========================
+FROM node:20 AS frontend-builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . .
-
-# Update & install Node.js + npm + git (for ziggy)
-RUN apt-get update && apt-get install -y npm git
-
-# Install PHP dependencies (no-dev for production)
-RUN composer install --no-dev --optimize-autoloader
+# Copy only package files first for caching
+COPY package*.json ./
 
 # Install Node dependencies
 RUN npm install
 
-# Generate Ziggy routes (only if you're using ziggy in frontend)
-RUN php artisan ziggy:generate
+# Copy all frontend source
+COPY . .
 
-# Build frontend
+# Generate Ziggy routes (if applicable)
+RUN if [ -f artisan ]; then php artisan ziggy:generate || true; fi
+
+# Build frontend assets
 RUN npm run build
+
+
+# =========================
+# Stage 2: PHP + Nginx
+# =========================
+FROM webdevops/php-nginx:8.2
+
+WORKDIR /app
+
+# Copy composer files first
+COPY composer.json composer.lock ./
+
+# Install PHP dependencies (production only)
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+# Copy all Laravel project files
+COPY . .
+
+# Copy built frontend assets from Stage 1
+COPY --from=frontend-builder /app/public/js public/js
+COPY --from=frontend-builder /app/public/css public/css
+COPY --from=frontend-builder /app/public/build public/build
 
 # Laravel cache config/routes/views
 RUN php artisan config:cache \
