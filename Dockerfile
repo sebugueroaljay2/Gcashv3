@@ -1,73 +1,34 @@
-# ===============================
-# Stage 1 - PHP dependencies
-# ===============================
-FROM composer:2 AS vendor
-
-WORKDIR /var/www/html
-
-# Copy composer files for caching
-COPY composer.json composer.lock ./
-
-# Update Composer
-RUN composer self-update
-
-# Install PHP dependencies
-RUN composer install \
-    --no-dev \
-    --optimize-autoloader \
-    --no-interaction \
-    --no-progress
-
-# ===============================
-# Stage 2 - Frontend build
-# ===============================
-FROM node:20 AS frontend
-
-WORKDIR /var/www/html
-
-# Copy package files for caching
-COPY package.json package-lock.json ./
-
-# Install npm dependencies
-RUN npm install
-
-# Copy the rest of the frontend files
-COPY . .
-
-# Build the frontend
-RUN npm run build
-
-# ===============================
-# Stage 3 - Final Laravel App
-# ===============================
-FROM php:8.2-fpm
-
-# Install needed PHP extensions
-RUN apt-get update && apt-get install -y \
-    unzip \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    zip \
-    git \
-    curl \
- && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+# Use PHP + Nginx image
+FROM webdevops/php-nginx:8.2
 
 # Set working directory
-WORKDIR /var/www/html
+WORKDIR /app
 
-# Copy vendor from stage 1
-COPY --from=vendor /var/www/html/vendor ./vendor
-
-# Copy built frontend from stage 2
-COPY --from=frontend /var/www/html/public ./public
-
-# Copy the rest of the Laravel app
+# Copy project files
 COPY . .
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
- && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
+# Update & install Node.js + npm + git (for ziggy)
+RUN apt-get update && apt-get install -y npm git
 
-EXPOSE 9000
-CMD ["php-fpm"]
+# Install PHP dependencies (no-dev for production)
+RUN composer install --no-dev --optimize-autoloader
+
+# Install Node dependencies
+RUN npm install
+
+# Generate Ziggy routes (only if you're using ziggy in frontend)
+RUN php artisan ziggy:generate
+
+# Build frontend
+RUN npm run build
+
+# Laravel cache config/routes/views
+RUN php artisan config:cache \
+ && php artisan route:cache \
+ && php artisan view:cache
+
+# Set file permissions
+RUN chown -R application:application /app
+
+# Expose default web port
+EXPOSE 80
