@@ -5,8 +5,11 @@ FROM composer:2 AS vendor
 
 WORKDIR /var/www/html
 
-# Copy composer files first for caching
+# Copy composer files for caching
 COPY composer.json composer.lock ./
+
+# Update Composer
+RUN composer self-update
 
 # Install PHP dependencies
 RUN composer install \
@@ -22,7 +25,7 @@ FROM node:20 AS frontend
 
 WORKDIR /var/www/html
 
-# Copy package files first for caching
+# Copy package files for caching
 COPY package.json package-lock.json ./
 
 # Install npm dependencies
