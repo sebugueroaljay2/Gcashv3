@@ -1,0 +1,15 @@
+name: laravel-app
+type: docker
+
+docker:
+  dockerfile: Dockerfile
+
+ports:
+  - port: 80
+    protocol: http
+
+env:
+  APP_ENV: production
+  APP_KEY: base64:dpKa3ITfoKHfHFr2qezX6jaYJRyo39iYjnirKmUEWLg=
+  APP_DEBUG: false
+  APP_URL: https://remaining-jewelle-aljaydev-9e86432d.koyeb.app

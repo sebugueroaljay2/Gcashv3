@@ -1,54 +1,31 @@
-# =========================
-# Stage 1: Frontend build
-# =========================
-FROM node:20 AS frontend-builder
-
-WORKDIR /app
-
-# Copy only package files first for caching
-COPY package*.json ./
-
-# Install Node dependencies
-RUN npm install
-
-# Copy all frontend source
-COPY . .
-
-# Generate Ziggy routes (if applicable)
-RUN if [ -f artisan ]; then php artisan ziggy:generate || true; fi
-
-# Build frontend assets
-RUN npm run build
-
-
-# =========================
-# Stage 2: PHP + Nginx
-# =========================
+# Base image with PHP, Composer, and Nginx
 FROM webdevops/php-nginx:8.2
 
+# Set working directory
 WORKDIR /app
 
-# Copy composer files first
+# Set document root to Laravel public directory
+ENV WEB_DOCUMENT_ROOT=/app/public
+
+# Copy composer and install dependencies first for caching
 COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
 
-# Install PHP dependencies (production only)
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
-
-# Copy all Laravel project files
+# Copy the rest of the app files
 COPY . .
 
-# Copy built frontend assets from Stage 1
-COPY --from=frontend-builder /app/public/js public/js
-COPY --from=frontend-builder /app/public/css public/css
-COPY --from=frontend-builder /app/public/build public/build
+# Install Node dependencies and build assets
+RUN apt-get update && apt-get install -y npm \
+    && npm install \
+    && npm run build
 
-# Laravel cache config/routes/views
+# Laravel cache optimizations
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache
 
-# Set file permissions
-RUN chown -R application:application /app
+# Set permissions
+RUN chown -R application:application /app \
+    && chmod -R 755 /app/storage /app/bootstrap/cache
 
-# Expose default web port
 EXPOSE 80
