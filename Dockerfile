@@ -1,5 +1,5 @@
-# Base image with PHP and Nginx
-FROM php:8.2-fpm
+# Stage 1: Build stage
+FROM php:8.2-fpm AS build
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     zip \
     curl \
+    nodejs \
     npm \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
@@ -21,24 +22,40 @@ WORKDIR /var/www/html
 
 # Copy composer files and install dependencies
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress || cat /root/.composer/logs/*
 
-# Copy all application files
+# Copy the rest of the application
 COPY . .
 
-# Build frontend assets
+# Build frontend
 RUN npm install && npm run build
 
-# Laravel cache optimizations
+# Laravel cache
 RUN php artisan config:cache \
  && php artisan route:cache \
  && php artisan view:cache
 
-# Set permissions
+# Stage 2: Production image
+FROM php:8.2-fpm
+
+WORKDIR /var/www/html
+
+# Copy PHP extensions
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    curl \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+
+# Copy built application from build stage
+COPY --from=build /var/www/html /var/www/html
+
+# Permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Expose port 9000 for PHP-FPM
 EXPOSE 9000
 
 CMD ["php-fpm"]
